@@ -11,10 +11,10 @@ world = World()
 
 # You may uncomment the smaller graphs for development and testing purposes.
 # map_file = "maps/test_line.txt"
-map_file = "maps/test_cross.txt"
+# map_file = "maps/test_cross.txt"
 # map_file = "maps/test_loop.txt"
 # map_file = "maps/test_loop_fork.txt"
-# map_file = "maps/main_maze.txt"
+map_file = "maps/main_maze.txt"
 
 # Loads the map into a dictionary
 room_graph = literal_eval(open(map_file, "r").read())
@@ -58,65 +58,85 @@ def inverse_move(move):
         return "e"
 
 
-def dfs(room, visited, path, t, path_builder=None):
-    if path_builder is None:
-        path_builder = []
+def convert_to_directions(arr, visited):
+    for i in range(1, len(arr)):
+        x1, y1 = visited[arr[i-1]][0]
+        x2, y2 = visited[arr[i]][0]
+        if x1 == x2+1 and y1 == y2:
+            traversal_path.append("w")
+        elif x1 == x2-1 and y1 == y2:
+            traversal_path.append("e")
+        elif y1 == y2-1 and x1 == x2:
+            traversal_path.append("n")
+        else:
+            traversal_path.append("s")
+    last = arr[-1]
+    x, y = visited[last][0]
+    last_room = world.room_grid[x][y]
+    return last_room
 
-    possible_paths = visited[room.id][1]
-    x, y = visited[room.id][0]
 
-    for move in possible_paths:
-        # opposite = inverse_move(move)
-        next_room = check_move(move, x, y)
-        if possible_paths[move] == "?" and next_room.id not in t:
-            path_builder = path_builder.copy()
-            path_builder.append(move)
-            possible_paths[move] = next_room.id
-            # if next_room.id not in t:
-            np = dfs(next_room, visited, path, t, path_builder)
+def dfs(room, visited):
+    stack = [room]
+    path = []
+    while len(stack) > 0:
+        curr = stack.pop()
+        path.append(curr.id)
+        exits = curr.get_exits()
+        x, y = curr.get_coords()
+        neighbors = {}
+        for move in exits:
+            next_room = check_move(move, x, y)
+            if next_room.id in visited:
+                neighbors[move] = next_room.id
+                opposite = inverse_move(move)
+                visited[next_room.id][1][opposite] = curr.id
+            else:
+                neighbors[move] = "?"
+        visited[curr.id] = [(x, y), neighbors]
+        connected_rooms = visited[curr.id][1]
+        flag = False
+        for move in connected_rooms:
+            if connected_rooms[move] == "?":
+                flag = True
+        if flag == False:
+            convert_to_directions(path, visited)
+            return curr
+        for move in connected_rooms:
+            if connected_rooms[move] == "?":
+                next_room = check_move(move, x, y)
+                stack.append(next_room)
 
-            if np:
-                return np
 
-    return path_builder
+def bfs(room, visited):
+    q = [[room.id]]
+    fin = set()
+    while len(q) > 0 and len(visited) != len(world.rooms):
+        path = q.pop(0)
+        curr = path[-1]
+        connected_rooms = visited[curr][1]
+        for move in connected_rooms:
+            if connected_rooms[move] not in fin:
+                fin.add(curr)
+                np = path.copy()
+                if connected_rooms[move] == "?":
+                    return np
+                np.append(connected_rooms[move])
+                q.append(np)
 
 
 def traverse_all_rooms(starting_room):
     visited = {}
-    path = []
-    t = set()
-    # populate visited with unexplored rooms
-    for i in range(len(world.rooms)):
-        neighbors = {}
-        exits = world.rooms[i].get_exits()
-        x, y = world.rooms[i].get_coords()
-        for move in exits:
-            neighbors[move] = "?"
-        visited[i] = [(x, y), neighbors]
     q = [starting_room]
-    # print(visited)
-    while len(q) > 0:
-        curr = q.pop(0)
-        possible_paths = visited[curr.id][1]
-        x, y = visited[curr.id][0]
-        print("----->", (x, y), possible_paths)
-        for move in possible_paths:
-            if possible_paths[move] == "?":
-                print("hey", move)
-                t.add(curr.id)
-                # path.append(move)
-                # next_room = check_move(move, x, y)
-                # possible_paths[move] = next_room.id
-                opposite = inverse_move(move)
-                # if opposite in visited[next_room.id][1]:
-                #     visited[next_room.id][1][opposite] = curr.id
-                dfs_path = dfs(curr, visited, path, t)
-                dfs_path += opposite
-                path += dfs_path
-                print("*&", dfs_path)
-    print("SDLfjsdlfjlsdklsdf, path", path)
-    for move in path:
-        traversal_path.append(move)
+    while len(q) > 0 and len(world.rooms) != len(visited):
+        current = q.pop(0)
+        if current not in visited:
+            last_discovered_room = dfs(current, visited)
+            bfs_path = bfs(last_discovered_room, visited)
+            if bfs_path is None:
+                return
+            last_visited_room = convert_to_directions(bfs_path, visited)
+            q.append(last_visited_room)
 
 
 traverse_all_rooms(player.current_room)
